@@ -7,6 +7,7 @@ import torch_geometric
 from torch_geometric.nn.inits import glorot, zeros
 from torch_geometric.nn import conv
 from torch_geometric.typing import Adj, OptTensor
+from torch_geometric.utils import softmax
 
 
 class e3GATAttendOnlyConv(conv.MessagePassing):
@@ -136,7 +137,7 @@ class e3GATAttendOnlyConv(conv.MessagePassing):
         x = F.leaky_relu(x, self.negative_slope)
         alpha = (x.view(x.size(0), 1, x.size(1)) * self.att).sum(dim=-1)
         # softmax across neighbors
-        alpha = torch_geometric.utils.softmax(alpha, index, ptr, dim_size)
+        alpha = softmax(alpha, index, ptr, dim_size)
         alpha = F.dropout(alpha, p=self.dropout, training=self.training)
 
         return alpha
