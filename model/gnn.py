@@ -63,15 +63,16 @@ class e3GATAttendOnlyConv(conv.MessagePassing):
         # simulate receptive field by gnn at each diffusion step
         #
         walks = torch.linalg.matrix_power(adj_matrix, step)
-        src, tgt = torch.nonzero(walks, as_tuple=True)
-        edge_attr = walks[src, tgt]
-        new_edge_index = torch.stack([src, tgt], dim=0)
+        s, t = torch.nonzero(walks, as_tuple=True)
+        edge_attr = walks[s, t]
+        new_edge_index = torch.stack([s, t], dim=0)
 
-        # alpha needs coordinates to have distance parameter needed for e3
+        #
+        # gat
+        #
         alpha = self.edge_updater(new_edge_index, x=x, edge_attr=edge_attr)
         # propogate shouldn't use coordinate parameter
         out = self.propagate(new_edge_index, x=x[:, self.e3dims :], alpha=alpha)
-
         # average over all attention heads
         out = out.mean(dim=1)
 
