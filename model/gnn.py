@@ -42,7 +42,9 @@ class e3GATAttendOnlyConv(conv.MessagePassing):
         glorot(self.att)
         zeros(self.bias)
 
-    def forward(self, x: Tensor, edge_index: Adj, step=1):
+    def forward(self, x: Tensor, edge_index: Adj, edge_weight=1):
+        # edge_weight is the number of diffusion steps! (not the weight)
+        step = edge_weight
         H, C = self.heads, self.channels
 
         num_nodes = x.size(0)
@@ -58,7 +60,7 @@ class e3GATAttendOnlyConv(conv.MessagePassing):
         none3 = x[:, self.e3dims :]
 
         alpha = self.edge_updater(new_edge_index, x=x, edge_attr=edge_attr)
-        out = self.propagate(edge_index, x=none3, alpha=alpha)
+        out = self.propagate(new_edge_index, x=none3, alpha=alpha)
 
         # average over all attention heads
         out = out.mean(dim=1)
@@ -120,7 +122,7 @@ class e3GATAttendOnlyConv(conv.MessagePassing):
 
 
 class e3GATAttend(torch_geometric.nn.models.GCN):
-    supports_edge_weight = False
+    supports_edge_weight = True
     supports_edge_attr = False
 
     def init_conv(
