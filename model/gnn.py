@@ -30,7 +30,7 @@ class e3GATAttendOnlyConv(conv.MessagePassing):
 
         self.e3dims = e3dims
 
-        # attention doesnt use coordinates, only uses distance (+ 1 feature)
+        # attention doesnt use coordinates, only uses other features + distance (- e3dims + 1 distance)
         self.att = Parameter(torch.empty(1, heads, channels - e3dims + 1))
 
         if bias:
