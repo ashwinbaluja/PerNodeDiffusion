@@ -18,6 +18,7 @@ class e3GATAttendOnlyConv(conv.MessagePassing):
         bias=False,
         negative_slope=0.2,
         dropout=0.0,
+        add_self_loops=False,
         **kwargs
     ):
         super().__init__(node_dim=0, **kwargs)
@@ -25,6 +26,7 @@ class e3GATAttendOnlyConv(conv.MessagePassing):
         self.heads = heads
         self.negative_slope = negative_slope
         self.dropout = dropout
+        self.add_self_loops = add_self_loops
 
         self.e3dims = e3dims
 
@@ -51,6 +53,9 @@ class e3GATAttendOnlyConv(conv.MessagePassing):
         adj_matrix = torch.zeros((num_nodes, num_nodes), dtype=torch.float32)
         adj_matrix[edge_index[0], edge_index[1]] = 1.0
 
+        if self.add_self_loops:
+            adj_matrix[edge_index[0], edge_index[0]] = 1.0
+
         # simulate receptive field by gnn at each diffusion step
         walks = torch.linalg.matrix_power(adj_matrix, step)
         src, tgt = torch.nonzero(walks, as_tuple=True)
@@ -74,10 +79,12 @@ class e3GATAttendOnlyConv(conv.MessagePassing):
         ) * alpha.view(alpha.size(0), alpha.size(1), 1)
         alpha_scaled_features = alpha_scaled_features.mean(dim=1)
         num_nodes = x.size(0)
-        aggregated_features = torch.zeros(
-            (num_nodes, self.e3dims), device=x.device, dtype=x.dtype
-        )
-        aggregated_features.index_add_(0, new_edge_index[1], alpha_scaled_features)
+        aggregated_features = x[:, : self.e3dims]
+        new_contributions = torch.zeros_like(aggregated_features)
+        zeros = torch.zeros(num_nodes) - 1
+        zeros.index_add_(0, new_edge_index[1], torch.ones(new_edge_index.size(1)))
+        new_contributions.index_add_(0, new_edge_index[1], alpha_scaled_features)
+        aggregated_features += new_contributions / zeros.view(-1, 1)
 
         if self.bias is not None:
             out = out + self.bias
