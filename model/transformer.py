@@ -4,7 +4,13 @@ from torch import nn
 
 class ConditionalTransformer(nn.Module):
     def __init__(
-        self, num_channels, conditioning_size, n_heads, num_layers, dropout, activation
+        self,
+        num_channels,
+        conditioning_size,
+        n_heads=6,
+        num_layers=12,  # defaults for DiT
+        activation="relu",
+        bias=True,
     ):
         super().__init__()
 
@@ -12,7 +18,6 @@ class ConditionalTransformer(nn.Module):
         self.conditioning_size = conditioning_size
         self.n_heads = n_heads
         self.num_layers = num_layers
-        self.dropout = dropout
         self.activation = activation
 
         self.layers = nn.ModuleList()
@@ -25,9 +30,9 @@ class ConditionalTransformer(nn.Module):
                     d_model=input_size,
                     nhead=self.n_heads,
                     dim_feedforward=input_size,
-                    dropout=self.dropout,
                     activation=self.activation,
-                    norm_first=True,
+                    norm_first=True,  # like ViT, DiT
+                    bias=bias,
                 )
             )
 
