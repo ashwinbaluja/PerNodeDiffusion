@@ -68,7 +68,7 @@ class e3GATAttendOnlyConv(conv.MessagePassing):
 
         # alpha needs coordinates to have distance parameter needed for e3
         alpha = self.edge_updater(new_edge_index, x=x, edge_attr=edge_attr)
-        # propogate shouldn't use distance parameter
+        # propogate shouldn't use coordinate parameter
         out = self.propagate(new_edge_index, x=x[:, self.e3dims :], alpha=alpha)
 
         # average over all attention heads
