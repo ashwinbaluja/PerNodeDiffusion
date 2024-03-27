@@ -30,6 +30,7 @@ class e3GATAttendOnlyConv(conv.MessagePassing):
 
         self.e3dims = e3dims
 
+        # attention doesnt use coordinates, only uses distance (+ 1 feature)
         self.att = Parameter(torch.empty(1, heads, channels - e3dims + 1))
 
         if bias:
@@ -49,6 +50,7 @@ class e3GATAttendOnlyConv(conv.MessagePassing):
         step = edge_weight
         H, C = self.heads, self.channels
 
+        # build adjacency matrix from edge_index
         num_nodes = x.size(0)
         adj_matrix = torch.zeros((num_nodes, num_nodes), dtype=torch.float32)
         adj_matrix[edge_index[0], edge_index[1]] = 1.0
@@ -56,21 +58,25 @@ class e3GATAttendOnlyConv(conv.MessagePassing):
         if self.add_self_loops:
             adj_matrix[edge_index[0], edge_index[0]] = 1.0
 
+        #
         # simulate receptive field by gnn at each diffusion step
+        #
         walks = torch.linalg.matrix_power(adj_matrix, step)
         src, tgt = torch.nonzero(walks, as_tuple=True)
         edge_attr = walks[src, tgt]
         new_edge_index = torch.stack([src, tgt], dim=0)
 
-        none3 = x[:, self.e3dims :]
-
+        # alpha needs coordinates to have distance parameter needed for e3
         alpha = self.edge_updater(new_edge_index, x=x, edge_attr=edge_attr)
-        out = self.propagate(new_edge_index, x=none3, alpha=alpha)
+        # propogate shouldn't use distance parameter
+        out = self.propagate(new_edge_index, x=x[:, self.e3dims :], alpha=alpha)
 
         # average over all attention heads
         out = out.mean(dim=1)
 
+        #
         # e3 gnn
+        #
         source_features = x[new_edge_index[1], : self.e3dims]
         neighbor_features = x[new_edge_index[0], : self.e3dims]
         # compute and average attention over all heads
@@ -79,21 +85,27 @@ class e3GATAttendOnlyConv(conv.MessagePassing):
         ) * alpha.view(alpha.size(0), alpha.size(1), 1)
         alpha_scaled_features = alpha_scaled_features.mean(dim=1)
         num_nodes = x.size(0)
+        # initialize coordinates with initial coordinates
         aggregated_features = x[:, : self.e3dims]
         new_contributions = torch.zeros_like(aggregated_features)
+        # count num of contributions
         zeros = torch.zeros(num_nodes) - 1
         zeros.index_add_(0, new_edge_index[1], torch.ones(new_edge_index.size(1)))
+        # aggregate diffs in coordinates times attention
         new_contributions.index_add_(0, new_edge_index[1], alpha_scaled_features)
+        # combine and scale by num of contributions
         aggregated_features += new_contributions / zeros.view(-1, 1)
 
         if self.bias is not None:
             out = out + self.bias
 
+        # add coordinates back to output
         out = torch.cat([aggregated_features, out], dim=-1)
 
         return out
 
     def message(self, x_j, alpha):
+        # multiply by attention
         return alpha.view(alpha.size(0), alpha.size(1), 1) * x_j.view(
             x_j.size(0), 1, -1
         )
@@ -123,6 +135,7 @@ class e3GATAttendOnlyConv(conv.MessagePassing):
         # attention
         x = F.leaky_relu(x, self.negative_slope)
         alpha = (x.view(x.size(0), 1, x.size(1)) * self.att).sum(dim=-1)
+        # softmax across neighbors
         alpha = torch_geometric.utils.softmax(alpha, index, ptr, dim_size)
         alpha = F.dropout(alpha, p=self.dropout, training=self.training)
 
@@ -130,6 +143,7 @@ class e3GATAttendOnlyConv(conv.MessagePassing):
 
 
 class e3GATAttend(torch_geometric.nn.models.GCN):
+    # edge weights are number of diffusion steps, hack to pass to conv forward
     supports_edge_weight = True
     supports_edge_attr = False
 
