@@ -66,9 +66,10 @@ class e3GATAttendOnlyConv(conv.MessagePassing):
         out = out.mean(dim=1)
 
         # e3 gnn
+        source_features = x[new_edge_index[1], : self.e3dims]
         neighbor_features = x[new_edge_index[0], : self.e3dims]
         # compute and average attention over all heads
-        alpha_scaled_features = neighbor_features.view(
+        alpha_scaled_features = (source_features - neighbor_features).view(
             neighbor_features.size(0), 1, -1
         ) * alpha.view(alpha.size(0), alpha.size(1), 1)
         alpha_scaled_features = alpha_scaled_features.mean(dim=1)
