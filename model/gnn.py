@@ -49,7 +49,6 @@ class e3GATAttendOnlyConv(conv.MessagePassing):
     def forward(self, x: Tensor, edge_index: Adj, edge_weight=1):
         # edge_weight is the number of diffusion steps! (not the weight)
         step = edge_weight
-        H, C = self.heads, self.channels
 
         # build adjacency matrix from edge_index
         num_nodes = x.size(0)
@@ -156,7 +155,7 @@ class e3GATAttend(torch_geometric.nn.models.GCN):
         e3dims: int = 3,
         heads: int = 3,
         **kwargs
-    ) -> conv.MessagePassing:
+    ) -> e3GATAttendOnlyConv:
         # first e3dims are coordinates
         assert in_channels == out_channels
         return e3GATAttendOnlyConv(in_channels, heads=heads, e3dims=e3dims, **kwargs)
