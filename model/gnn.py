@@ -19,7 +19,7 @@ class e3GATAttendOnlyConv(conv.MessagePassing):
         bias=False,
         negative_slope=0.2,
         dropout=0.0,
-        add_self_loops=False,
+        add_self_loops=True,
         **kwargs
     ):
         super().__init__(node_dim=0, **kwargs)
