@@ -106,6 +106,8 @@ class e3GATAttendOnlyConv(conv.MessagePassing):
         return out
 
     def message(self, x_j, alpha):
+        # x_j does not contain coordinates
+
         # multiply by attention
         return alpha.view(alpha.size(0), alpha.size(1), 1) * x_j.view(
             x_j.size(0), 1, -1
@@ -120,12 +122,16 @@ class e3GATAttendOnlyConv(conv.MessagePassing):
         ptr: OptTensor,
         dim_size: int,
     ) -> Tensor:
+        # x_j and x_i contain coordinates
+
         # aggregate
         x = x_i + x_j
         dists = torch.sqrt(
             (x_i[:, : self.e3dims] - x_j[:, : self.e3dims]).pow(2).sum(axis=-1)
         ).view(-1, 1)
         x = torch.cat([x[:, self.e3dims :], dists], axis=-1)
+
+        # now they don't
 
         if edge_attr is not None:
             if edge_attr.dim() == 1:
