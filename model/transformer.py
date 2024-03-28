@@ -37,6 +37,7 @@ class ConditionalTransformer(nn.Module):
             )
 
     def forward(self, x, conditioning):
+        # prepend conditioning to input each time, don't learn it
         for i in self.layers:
             input = torch.cat([conditioning, x], dim=-1)
             x = i(input)[:, self.conditioning_size :]

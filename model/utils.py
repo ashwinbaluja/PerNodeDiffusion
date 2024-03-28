@@ -24,6 +24,7 @@ class SinusoidalEmbedding(nn.Module):
         return self.size
 
 
+# probably could be improved
 class MolecularEmbedding(nn.Module):
     def __init__(self, max_element: int, embedding_dim: int):
         super().__init__()

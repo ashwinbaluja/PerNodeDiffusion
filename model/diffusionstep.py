@@ -54,6 +54,10 @@ class DiffusionStep(nn.Module):
         diffusion_time=torch.tensor(1),
         gnn_time_step=1,
     ):
+        # diffusion_time is from the scheduler
+        # gnn_time_step is the real number step out of the total number of steps
+        # OR
+        # gnn_time_step is the same as from the scheduler. as of yet to be determined
 
         time_emb = self.sinusoidal_embedding(diffusion_time)  # (self.time_emb_size)
 
