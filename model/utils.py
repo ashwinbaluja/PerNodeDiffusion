@@ -24,14 +24,22 @@ class SinusoidalEmbedding(nn.Module):
         return self.size
 
 
-# probably could be improved - learned molecule embedding?
-class MolecularEmbedding(nn.Module):
-    def __init__(self, max_element: int, embedding_dim: int):
+# probably could be improved, could be redundant
+# maybe just leave this to the transformer?
+class MolecularEmbedding(torch.nn.Module):
+    def __init__(self, max_element: int, output: int = 8):
         super().__init__()
         self.max_element = max_element
+        self.hidden = torch.nn.Linear(max_element, max_element)
+        self.relu = torch.nn.ReLU()
+        self.output = torch.nn.Linear(max_element, output)
 
     def forward(self, x):
-        return F.one_hot(x, num_classes=self.max_element).float()
+        onehot = F.one_hot(x, num_classes=self.max_element).float()
+        x = self.hidden(onehot)
+        x = self.relu(x)
+        x = self.output(x)
+        return x
 
 
 # https://hunterheidenreich.com/posts/kabsch_algorithm/

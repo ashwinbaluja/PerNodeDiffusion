@@ -61,6 +61,8 @@ class DiffusionStep(nn.Module):
             # module.weight.data.one_()
             # module.bias.data.zero_()
             pass
+            # DiT paper initialized to make it identity func, as it had FiLM like stuff.
+            # don't think its necessary w/ the current code
 
     def forward(
         self,
@@ -81,5 +83,7 @@ class DiffusionStep(nn.Module):
         conditioning = torch.cat([time_emb, molecules], dim=-1)
 
         x = self.transformer(x, conditioning)
-        x = self.gnn(x, edge_index, edge_weight=gnn_time_step)
+        x = self.gnn(
+            x, edge_index, edge_weight=gnn_time_step
+        )  # edge_weight is power for matrix exponent
         return x

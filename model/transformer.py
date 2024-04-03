@@ -2,11 +2,10 @@ import torch
 from torch import nn
 
 
+# does tabular data need positional encodings?
 class ConditionalTransformer(nn.Module):
     def __init__(self, num_channels, hidden_channels, n_heads, num_layers, activation):
         super().__init__()
-
-        # d_model=512, nhead=8, num_encoder_layers=6, num_decoder_layers=6, dim_feedforward=2048, dropout=0.1, activation=<function relu>, custom_encoder=None, custom_decoder=None, layer_norm_eps=1e-05, batch_first=False, norm_first=False, bias=True, device=None, dtype=None)
 
         self.num_channels = num_channels
         self.n_heads = n_heads
@@ -37,14 +36,14 @@ class ConditionalTransformer(nn.Module):
             dtype=x.dtype,
         )
         catted = torch.cat([conditioning, x], dim=-1)[:, :, None]
+        # iffy about this - kind of like one hot, but we just put the value in the 0 index of each
+        # token embedding, and let the transformer learn the rest
         input = torch.cat([inp, catted], dim=-1)
 
         for transformer in self.layers:
             x = transformer(input)
+            # teacher forcing? yes or no? (force conditioning to be the same)
         x = self.proj(x[:, conditioning.shape[1] :, :])
+        # any uses for an additional last token? maybe get some useful information out of it somehow, this probably learns a nice embedding representation of each atom(!!)
 
-        """
-        input = torch.cat([conditioning, x], dim=-1)
-        x = self.transformer(input)[:, self.conditioning_size:]
-        """
         return x[:, :, 0]

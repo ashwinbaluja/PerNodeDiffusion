@@ -12,6 +12,7 @@ from torch.nn import functional as F
 from model.utils import kabsch_torch_batched
 
 
+# move accelerator out
 def train_diffusion(
     model,
     config,
@@ -106,6 +107,8 @@ def train_diffusion(
 
                     with torch.no_grad():
                         R, t = kabsch_torch_batched(y[None, :, :], x[None, :, :3])
+                        # aligning noise... not sure if this is correct. could be a big issue.
+                        # maybe reframe to predict final image, not noise directly, then subtract for noise estimate for diffusion loss?
 
                     warped = y - y.mean(dim=0, keepdims=True)
                     warped = warped @ R.squeeze().T
