@@ -1,50 +1,52 @@
 from accelerate import Accelerator
 from diffusers.optimization import get_cosine_schedule_with_warmup
 from diffusers import DDPMScheduler
+
 import os
 from dataclasses import dataclass
 from tqdm.auto import tqdm
+
 import torch
-import torch.nn.functional as F
+from torch.nn import functional as F
+
+from model.utils import kabsch_torch_batched
 
 
-@dataclass
-class DiffusionConfig:
-    batch_size: int = 128
-    num_epochs: int = 100
-    save_image_epochs: int = 1
-    save_model_epochs: int = 1
-    learning_rate: float = 1e-4
-    num_warmup_steps: int = 500
-    push_to_hub: bool = False
-    output_dir: str = "output/"
-    num_train_timesteps: int = 1000
 
+def train_diffusion(
+    model,
+    config: DiffusionConfig,
+    train_dataloader,
+    noise_scheduler=None,
+    optimizer=None,
+    lr_scheduler=None,
+):
 
-config = DiffusionConfig()
+    if noise_scheduler is None:
+        noise_scheduler = DDPMScheduler(num_train_timesteps=config.num_train_timesteps)
 
+    if optimizer is None:
+        optimizer = torch.optim.AdamW(
+            model.parameters(), lr=config.learning_rate, weight_decay=0.01
+        )
 
-# still in progress, doesn't call diffusionstep correctly
-def train_diffusion(model, config: DiffusionConfig, dataloader):
-
-    noise_scheduler = DDPMScheduler(num_train_timesteps=config.num_train_timesteps)
-
-    optimizer = torch.optim.AdamW(model.parameters(), lr=config.learning_rate)
-    lr_scheduler = get_cosine_schedule_with_warmup(
-        optimizer=optimizer,
-        num_warmup_steps=config.num_warmup_steps,
-        num_training_steps=(len(train_dataloader) * config.num_epochs),
-    )
+    if lr_scheduler is None:
+        lr_scheduler = get_cosine_schedule_with_warmup(
+            optimizer=optimizer,
+            num_warmup_steps=config.num_warmup_steps,
+            num_training_steps=(len(train_dataloader) * config.num_epochs),
+        )
 
     accelerator = Accelerator(
         mixed_precision="fp16",
         gradient_accumulation_steps=1,
         log_with="tensorboard",
-        project_dir=os.path.join(config.output_dir, "logs"),
+        project_dir=os.path.join(config.output_dir, "logs/"),
     )
 
     if accelerator.is_main_process:
         os.makedirs(config.output_dir, exist_ok=True)
+        accelerator.init_trackers("pernodediffusion")
 
     model, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
         model, optimizer, train_dataloader, lr_scheduler
@@ -59,19 +61,25 @@ def train_diffusion(model, config: DiffusionConfig, dataloader):
         progress_bar.set_description(f"Epoch {epoch}")
 
         for step, batch in enumerate(train_dataloader):
-            clean = batch["molecule"]
 
-            noise = torch.randn(clean.shape, device=clean.device)
-            bs = clean.shape[0]
+            counts = batch.batch.unique(return_counts=True)[1]
+            duped = batch.y.repeat_interleave(counts, dim=0)
 
+            clean = torch.cat([batch.pos, batch.x, duped], dim=-1)
+
+            noise = torch.randn(
+                (len(counts), clean.shape[-1]), device=clean.device
+            ).repeat_interleave(counts, dim=0)
             # Sample a random timestep for each image
             timesteps = torch.randint(
                 0,
                 noise_scheduler.config.num_train_timesteps,
-                (bs,),
+                (1,),
                 device=clean.device,
                 dtype=torch.int64,
             )
+
+            timesteps = timesteps.expand(clean.shape[0])
 
             # Add noise to the clean images according to the noise magnitude at each timestep
             # (this is the forward diffusion process)
@@ -79,8 +87,40 @@ def train_diffusion(model, config: DiffusionConfig, dataloader):
 
             with accelerator.accumulate(model):
                 # Predict the noise residual
-                noise_pred = model(noised, timesteps, return_dict=False)[0]
-                loss = F.mse_loss(noise_pred, noise)
+
+                propogation = config.num_train_timesteps - timesteps[0]
+                noise_pred = model(
+                    noised,
+                    batch.z.to(noised.device),
+                    batch.edge_index.to(noised.device),
+                    gnn_time_step=config.num_train_timesteps - timesteps[0],
+                    diffusion_time=timesteps,
+                )
+
+                loss = 0
+
+                partial_loss = 0
+                # transform between learned and real
+                for y, x in zip(
+                    batch.pos.split(tuple(counts)), noise_pred.split(tuple(counts))
+                ):
+
+                    with torch.no_grad():
+                        R, t = kabsch_torch_batched(y[None, :, :], x[None, :, :3])
+
+                    warped = y - y.mean(dim=0, keepdims=True)
+                    warped = warped @ R.squeeze().T
+
+                    x = x - x.mean(dim=0, keepdims=True)
+
+                    partial_loss = partial_loss + F.mse_loss(
+                        warped[:, :3], x[:, :3]
+                    ) * (1 / len(counts))
+
+                loss = (
+                    F.mse_loss(noise_pred[:, 3:], noise[:, 3:]) * 30 / 33
+                    + partial_loss * 3 / 33
+                )
                 accelerator.backward(loss)
 
                 accelerator.clip_grad_norm_(model.parameters(), 1.0)
@@ -104,4 +144,7 @@ def train_diffusion(model, config: DiffusionConfig, dataloader):
                         (epoch + 1) % config.save_model_epochs == 0
                         or epoch == config.num_epochs - 1
                     ):
-                        model.save(os.path.join(config.output_dir, "model.pt"))
+                        torch.save(
+                            model.state_dict(),
+                            os.path.join(config.output_dir, "model.pt"),
+                        )

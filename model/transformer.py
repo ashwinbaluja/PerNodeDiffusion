@@ -3,43 +3,48 @@ from torch import nn
 
 
 class ConditionalTransformer(nn.Module):
-    def __init__(
-        self,
-        num_channels,
-        conditioning_size,
-        n_heads=6,
-        num_layers=12,  # defaults for DiT
-        activation="relu",
-        bias=True,
-    ):
+    def __init__(self, num_channels, hidden_channels, n_heads, num_layers, activation):
         super().__init__()
 
+        # d_model=512, nhead=8, num_encoder_layers=6, num_decoder_layers=6, dim_feedforward=2048, dropout=0.1, activation=<function relu>, custom_encoder=None, custom_decoder=None, layer_norm_eps=1e-05, batch_first=False, norm_first=False, bias=True, device=None, dtype=None)
+
         self.num_channels = num_channels
-        self.conditioning_size = conditioning_size
         self.n_heads = n_heads
         self.num_layers = num_layers
         self.activation = activation
 
         self.layers = nn.ModuleList()
 
-        input_size = num_channels + conditioning_size
+        self.input_size = hidden_channels
+
+        self.proj = nn.Linear(hidden_channels, 1)
 
         for i in range(self.num_layers):
             self.layers.append(
                 nn.TransformerEncoderLayer(
-                    d_model=input_size,
+                    d_model=self.input_size,
                     nhead=self.n_heads,
-                    dim_feedforward=input_size,
+                    dim_feedforward=self.input_size,
                     activation=self.activation,
-                    norm_first=True,  # like ViT, DiT
-                    bias=bias,
+                    norm_first=True,
                 )
             )
 
     def forward(self, x, conditioning):
-        # prepend conditioning to input each time, don't learn it
-        for i in self.layers:
-            input = torch.cat([conditioning, x], dim=-1)
-            x = i(input)[:, self.conditioning_size :]
+        inp = torch.zeros(
+            (x.shape[0], conditioning.shape[1] + x.shape[1], self.input_size - 1),
+            device=x.device,
+            dtype=x.dtype,
+        )
+        catted = torch.cat([conditioning, x], dim=-1)[:, :, None]
+        input = torch.cat([inp, catted], dim=-1)
 
-        return x
+        for transformer in self.layers:
+            x = transformer(input)
+        x = self.proj(x[:, conditioning.shape[1] :, :])
+
+        """
+        input = torch.cat([conditioning, x], dim=-1)
+        x = self.transformer(input)[:, self.conditioning_size:]
+        """
+        return x[:, :, 0]
