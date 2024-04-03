@@ -140,7 +140,6 @@ def train_diffusion(
                 accelerator.log(logs, step=global_step)
                 global_step += 1
 
-                # After each epoch you optionally sample some demo images with evaluate() and save the model
                 if accelerator.is_main_process:
                     if (
                         (epoch + 1) % config.save_model_epochs == 0
