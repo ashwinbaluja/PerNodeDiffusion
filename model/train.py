@@ -12,10 +12,9 @@ from torch.nn import functional as F
 from model.utils import kabsch_torch_batched
 
 
-
 def train_diffusion(
     model,
-    config: DiffusionConfig,
+    config,
     train_dataloader,
     noise_scheduler=None,
     optimizer=None,
