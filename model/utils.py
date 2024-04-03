@@ -80,7 +80,7 @@ def kabsch_torch_batched(P, Q):
     # Create a condition tensor that matches the shape of Vt but only for the last column
     condition = flip.unsqueeze(-1).expand_as(Vt).to(P.device)
 
-    # Use torch.where to create a new tensor with the modified values
+    # ! edited from orig to remove inplace modification, no longer necessary as we stop_grad it
     Vt_new = torch.where(condition, Vt * torch.tensor([-1.0]).to(P.device), Vt).to(
         P.device
     )
