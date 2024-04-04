@@ -102,9 +102,8 @@ def train_diffusion(
                 partial_loss = 0
                 # transform between learned and real
                 for y, x in zip(
-                    batch.pos.split(tuple(counts)), noise_pred.split(tuple(counts))
+                    noise[:, :3].split(tuple(counts)), noise_pred.split(tuple(counts))
                 ):
-
                     with torch.no_grad():
                         R, t = kabsch_torch_batched(y[None, :, :], x[None, :, :3])
                         # aligning noise... not sure if this is correct. could be a big issue.
