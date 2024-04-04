@@ -30,6 +30,7 @@ class ConditionalTransformer(nn.Module):
             )
 
     def forward(self, x, conditioning):
+        """
         inp = torch.zeros(
             (x.shape[0], conditioning.shape[1] + x.shape[1], self.input_size - 1),
             device=x.device,
@@ -45,5 +46,24 @@ class ConditionalTransformer(nn.Module):
             # teacher forcing? yes or no? (force conditioning to be the same)
         x = self.proj(x[:, conditioning.shape[1] :, :])
         # any uses for an additional last token? maybe get some useful information out of it somehow, this probably learns a nice embedding representation of each atom(!!)
+        """
+
+        inp = torch.zeros(
+            (x.shape[0], x.shape[1] + conditioning.shape[1], self.input_size - 2),
+            device=x.device,
+            dtype=x.dtype,
+        )
+        catted = torch.cat([conditioning, x], dim=-1)
+        positional = (
+            torch.linspace(0, 1, catted.shape[1] + 1, device=x.device, dtype=x.dtype)[
+                1:
+            ]
+            .view(1, -1, 1)
+            .expand(x.shape[0], -1, -1)
+        )
+        x = torch.cat([catted[:, :, None], positional, inp], dim=-1)
+        for transformer in self.layers:
+            x = transformer(x)
+        x = self.proj(x)[:, conditioning.shape[1] :, 0]
 
         return x[:, :, 0]
