@@ -6,7 +6,7 @@ from model.gnn import e3GATAttend
 from model.transformer import ConditionalTransformer
 
 
-class DiffusionStep(nn.Module):
+class DiffusionStep(torch.nn.Module):
     def __init__(
         self,
         num_channels: int,
@@ -38,22 +38,27 @@ class DiffusionStep(nn.Module):
             in_channels=num_channels,
             hidden_channels=num_channels,
             heads=n_heads,
-            num_layers=num_layers,
+            num_layers=1,
             dropout=dropout,
             e3dims=e3dims,
         )
 
         self.transformer = ConditionalTransformer(
-            num_channels, hidden_channels, n_heads, num_layers, activation=activation
+            num_channels,
+            hidden_channels,
+            self.conditioning_size,
+            n_heads,
+            num_layers,
+            activation=activation,
         )
 
     def initialize_weights(self):
         # Initialize transformer layers:
         def _basic_init(module):
-            if isinstance(module, nn.Linear):
-                nn.init.xavier_uniform_(module.weight)
+            if isinstance(module, torch.nn.Linear):
+                torch.nn.init.xavier_uniform_(module.weight)
                 if module.bias is not None:
-                    nn.init.constant_(module.bias, 0)
+                    torch.nn.init.constant_(module.bias, 0)
 
         self.apply(_basic_init)
 
@@ -61,8 +66,6 @@ class DiffusionStep(nn.Module):
             # module.weight.data.one_()
             # module.bias.data.zero_()
             pass
-            # DiT paper initialized to make it identity func, as it had FiLM like stuff.
-            # don't think its necessary w/ the current code
 
     def forward(
         self,
@@ -83,7 +86,5 @@ class DiffusionStep(nn.Module):
         conditioning = torch.cat([time_emb, molecules], dim=-1)
 
         x = self.transformer(x, conditioning)
-        x = self.gnn(
-            x, edge_index, edge_weight=gnn_time_step
-        )  # edge_weight is power for matrix exponent
+        x = self.gnn(x, edge_index, edge_weight=gnn_time_step)
         return x

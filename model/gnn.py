@@ -71,8 +71,13 @@ class e3GATAttendOnlyConv(conv.MessagePassing):
         # simulate receptive field by gnn at each diffusion step
 
         mask = adj_matrix.eq(0)
-        # normalize rows -- hugely skeptical on this correctness
-        adj_matrix = adj_matrix / adj_matrix.sum(dim=0, keepdim=True)
+        # normalize rows
+        # adj_matrix = adj_matrix / adj_matrix.sum(dim=0, keepdim=True)
+        deg_matrix = torch.diag(adj_matrix.sum(dim=1))
+        deg_matrix_sqrt = 1 / torch.sqrt(deg_matrix)
+        deg_matrix_sqrt = torch.nan_to_num(deg_matrix_sqrt, posinf=0.0)
+
+        adj_matrix = deg_matrix_sqrt @ adj_matrix @ deg_matrix_sqrt
 
         walks = torch.linalg.matrix_power(adj_matrix, step)
 
@@ -143,9 +148,7 @@ class e3GATAttendOnlyConv(conv.MessagePassing):
             if edge_attr.dim() == 1:
                 edge_attr = edge_attr.view(-1, 1)
 
-            x = (
-                x + edge_attr
-            )  # supposedly this is equivalent, according to pyg docs, to concat, because of a later step. i'm skeptical
+            x = x + edge_attr
 
         # attention
         x = F.leaky_relu(x, self.negative_slope)

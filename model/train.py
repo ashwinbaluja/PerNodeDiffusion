@@ -67,6 +67,8 @@ def train_diffusion(
 
             clean = torch.cat([batch.pos, batch.x, duped], dim=-1)
 
+            last = batch.y.shape[-1]
+
             noise = torch.randn(
                 (len(counts), clean.shape[-1]), device=clean.device
             ).repeat_interleave(counts, dim=0)
@@ -84,7 +86,6 @@ def train_diffusion(
             # Add noise to the clean images according to the noise magnitude at each timestep
             # (this is the forward diffusion process)
             noised = noise_scheduler.add_noise(clean, noise, timesteps)
-
             with accelerator.accumulate(model):
                 # Predict the noise residual
 
@@ -98,31 +99,34 @@ def train_diffusion(
                 )
 
                 loss = 0
-
-                partial_loss = 0
                 # transform between learned and real
-                for y, x in zip(
-                    batch.pos.split(tuple(counts)), noise_pred.split(tuple(counts))
+                positionloss = 0
+                molloss = 0
+                peratom = 0
+
+                for yall, xall in zip(
+                    noise.split(tuple(counts)), noise_pred.split(tuple(counts))
                 ):
+                    y = yall[:, :3]
+                    x = xall[:, :3]
 
-                    with torch.no_grad():
-                        R, t = kabsch_torch_batched(y[None, :, :], x[None, :, :3])
-                        # aligning noise... not sure if this is correct. could be a big issue.
-                        # maybe reframe to predict final image, not noise directly, then subtract for noise estimate for diffusion loss?
-
-                    warped = y - y.mean(dim=0, keepdims=True)
-                    warped = warped @ R.squeeze().T
-
-                    x = x - x.mean(dim=0, keepdims=True)
-
-                    partial_loss = partial_loss + F.mse_loss(
-                        warped[:, :3], x[:, :3]
+                    positionloss = positionloss + F.mse_loss(y, x) * (1 / len(counts))
+                    peratom = peratom + F.mse_loss(
+                        yall[:, 3:-last], xall[:, 3:-last]
                     ) * (1 / len(counts))
+                    averaged = torch.mean(xall[:, -last:], dim=0)
+                    molloss = molloss + F.mse_loss(yall[0, -last:], averaged) * (
+                        1 / len(counts)
+                    )
+
+                # loss = loss + (positionloss + molloss + peratom) * (1 / len(counts))
 
                 loss = (
-                    F.mse_loss(noise_pred[:, 3:], noise[:, 3:]) * 30 / 33
-                    + partial_loss * 3 / 33
+                    positionloss * (1 / batch.pos.shape[-1])
+                    + molloss * (1 / batch.y.shape[-1])
+                    + peratom * (1 / batch.x.shape[-1])
                 )
+
                 accelerator.backward(loss)
 
                 accelerator.clip_grad_norm_(model.parameters(), 1.0)
@@ -140,6 +144,7 @@ def train_diffusion(
                 accelerator.log(logs, step=global_step)
                 global_step += 1
 
+                # After each epoch you optionally sample some demo images with evaluate() and save the model
                 if accelerator.is_main_process:
                     if (
                         (epoch + 1) % config.save_model_epochs == 0

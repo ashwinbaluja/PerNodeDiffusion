@@ -3,24 +3,36 @@ from torch import nn
 
 
 # does tabular data need positional encodings?
-class ConditionalTransformer(nn.Module):
-    def __init__(self, num_channels, hidden_channels, n_heads, num_layers, activation):
+class ConditionalTransformer(torch.nn.Module):
+    def __init__(
+        self,
+        num_channels,
+        hidden_channels,
+        conditioning_size,
+        n_heads,
+        num_layers,
+        activation,
+    ):
         super().__init__()
 
+        # d_model=512, nhead=8, num_encoder_layers=6, num_decoder_layers=6, dim_feedforward=2048, dropout=0.1, activation=<function relu>, custom_encoder=None, custom_decoder=None, layer_norm_eps=1e-05, batch_first=False, norm_first=False, bias=True, device=None, dtype=None)
+
         self.num_channels = num_channels
+        self.conditioning_size = conditioning_size
         self.n_heads = n_heads
         self.num_layers = num_layers
         self.activation = activation
 
-        self.layers = nn.ModuleList()
+        self.layers = torch.nn.ModuleList()
 
         self.input_size = hidden_channels
 
-        self.proj = nn.Linear(hidden_channels, 1)
+        self.linear = torch.nn.Linear(num_channels, hidden_channels)
+        self.proj = torch.nn.Linear(hidden_channels, 1)
 
         for i in range(self.num_layers):
             self.layers.append(
-                nn.TransformerEncoderLayer(
+                torch.nn.TransformerEncoderLayer(
                     d_model=self.input_size,
                     nhead=self.n_heads,
                     dim_feedforward=self.input_size,
@@ -30,24 +42,6 @@ class ConditionalTransformer(nn.Module):
             )
 
     def forward(self, x, conditioning):
-        """
-        inp = torch.zeros(
-            (x.shape[0], conditioning.shape[1] + x.shape[1], self.input_size - 1),
-            device=x.device,
-            dtype=x.dtype,
-        )
-        catted = torch.cat([conditioning, x], dim=-1)[:, :, None]
-        # iffy about this - kind of like one hot, but we just put the value in the 0 index of each
-        # token embedding, and let the transformer learn the rest
-        input = torch.cat([inp, catted], dim=-1)
-
-        for transformer in self.layers:
-            x = transformer(input)
-            # teacher forcing? yes or no? (force conditioning to be the same)
-        x = self.proj(x[:, conditioning.shape[1] :, :])
-        # any uses for an additional last token? maybe get some useful information out of it somehow, this probably learns a nice embedding representation of each atom(!!)
-        """
-
         inp = torch.zeros(
             (x.shape[0], x.shape[1] + conditioning.shape[1], self.input_size - 2),
             device=x.device,
@@ -65,5 +59,8 @@ class ConditionalTransformer(nn.Module):
         for transformer in self.layers:
             x = transformer(x)
         x = self.proj(x)[:, conditioning.shape[1] :, 0]
-
-        return x[:, :, 0]
+        """
+        input = torch.cat([conditioning, x], dim=-1)
+        x = self.transformer(input)[:, self.conditioning_size:]
+        """
+        return x
